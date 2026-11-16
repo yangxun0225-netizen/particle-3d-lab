@@ -282,7 +282,7 @@
   <div class="count" id="shapeCount"></div>
 </div>
 
-<div class="hint" id="hintBar"><b>拖动</b> 旋转 &nbsp;·&nbsp; <b>滚轮 / 双指</b> 缩放 &nbsp;·&nbsp; <b>按住鼠标</b> 让粒子扩散 &nbsp;·&nbsp; <b>移动鼠标</b> 推开粒子</div>
+<div class="hint" id="hintBar"><b>拖动</b> 360° 旋转 &nbsp;·&nbsp; <b>滚轮 / 双指</b> 缩放 &nbsp;·&nbsp; <b>按住鼠标</b> 让粒子扩散 &nbsp;·&nbsp; <b>移动鼠标</b> 推开粒子</div>
 
 <aside class="panel" id="panel" aria-label="控制台">
   <div class="panel-head" id="panelHead">
@@ -347,7 +347,7 @@
     <div class="sec-label">手势控制 · 可选</div>
     <button class="wide-btn primary" id="gestureBtn" type="button">开启摄像头手势</button>
     <video id="camPreview" autoplay playsinline muted></video>
-    <div class="gesture-status" id="gestureStatus">手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型就停在那个角度。手掌张开多快，粒子就多快扩散张开；合拢抓握多快，粒子就多快收拢，基本 1:1 跟手。影像只在本机识别，不上传；不开也完全不影响鼠标操作。</div>
+    <div class="gesture-status" id="gestureStatus">手往左移，整个造型绕中心竖轴向左连续转；手往右移就向右转，可以转满 360° 一直转圈；手停住，造型就停在那个角度。攥拳抓取，整个图案收紧缩小；摊开手掌，整个图案放大张开，缩放跟手掌张合的速度一致、1:1 跟手，图案整体缩放。影像只在本机识别，不上传；不开也完全不影响鼠标操作。</div>
   </div>
 
   <div class="deploy">
@@ -364,7 +364,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="kicker">Optional Camera</div>
     <h1 id="modalTitle">是否启用手势控制？</h1>
-    <p>手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型停在那个角度。手掌张开的速度有多快，粒子扩散张开就有多快；合拢抓握，粒子同步收拢，基本 1:1 跟手不延迟。影像仅在本机识别，不会上传。也可稍后在控制台随时开启。</p>
+    <p>手往左移，整个造型绕中心竖轴向左连续转；手往右移就向右转，可以转满 360° 一直转圈；手停住，造型停在那个角度。攥拳抓取，整个图案收紧缩小；摊开手掌，整个图案放大张开，缩放跟手掌张合的速度一致，1:1 跟手不延迟。影像仅在本机识别，不会上传。也可稍后在控制台随时开启。</p>
     <div class="actions">
       <button type="button" class="go" id="modalGesture">启用手势</button>
       <button type="button" id="modalMouse">暂用鼠标</button>
@@ -401,7 +401,7 @@
     theme: 0,
     count: 12000,
     spread: 0.35,        // slider 0..1
-    gestureSpread: -1,   // -1 = gesture not driving
+    grabOpen: -1,        // -1 = no hand driving; else palm openness 0..1 (fist..open) driving the whole-shape scale
     holdBoost: 0,        // mouse press boost
     burst: 0,            // burst animation 0..1
     sizeMul: 1,
@@ -602,9 +602,11 @@
   var dragging = false, px = 0, py = 0;
   var rotX = 0, rotY = 0, rotXT = 0, rotYT = 0;
   var velXT = 0, velYT = 0; // kept zeroed: no fling — release must hold the angle
-  // gesture rigid rotation: hand screen-x maps to a target yaw around the
-  // central vertical axis; null = no hand has set an angle yet
+  // gesture rigid rotation: the hand's horizontal MOVEMENT accumulates
+  // into an unbounded yaw around the central vertical axis, so the shape
+  // can turn full 360° circles and keep going; null = no hand yet
   var gestureRotY = null, gestureHandPresent = false;
+  var gesturePrevSx = null; // last hand centre in mirrored screen space
   // true once the user has parked the shape at an angle by drag or gesture:
   // auto-rotation stays off until they re-enable it or reset the view
   var manualHold = false;
@@ -681,8 +683,11 @@
     pressMoved += Math.abs(dxm) + Math.abs(dym);
     // horizontal drag = rigid yaw around the central vertical axis only:
     // drag left turns the whole shape left, drag right turns it right.
-    // The whole group rotates — no particle is pushed or scattered.
-    var dRotY = dxm * 0.0072, dRotX = dym * 0.0042;
+    // The delta accumulates into rotYT with NO clamp or wrap, so the
+    // shape turns through full 360° circles and keeps going, by mouse
+    // or finger alike. The whole group rotates — no particle is pushed
+    // or scattered.
+    var dRotY = dxm * 0.009, dRotX = dym * 0.0042;
     rotYT += dRotY;
     rotXT = Math.max(-1.1, Math.min(1.1, rotXT + dRotX));
     manualHold = true;
@@ -788,7 +793,8 @@
   $('resetBtn').addEventListener('click', function () {
     // one tap back to the straight-on, centred front view
     rotXT = 0; rotYT = 0; rotX = 0; rotY = 0; velXT = 0; velYT = 0;
-    gestureRotY = null; gestureHandPresent = false; manualHold = false;
+    gestureRotY = null; gestureHandPresent = false; gesturePrevSx = null; manualHold = false;
+    state.grabOpen = -1; // grab scale eases back to 1×
     userZoom = false; camDistTarget = fitDist(); camDist = camDistTarget;
   });
   $('burstBtn').addEventListener('click', triggerBurst);
@@ -803,7 +809,7 @@
   // touch devices get touch wording in the hint line, and the mode chip
   // says 触摸 — touch is the default mode, camera gestures stay opt-in
   if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-    $('hintBar').innerHTML = '<b>单指拖动</b> 旋转 &nbsp;·&nbsp; <b>双指捏合</b> 缩放 &nbsp;·&nbsp; <b>双击</b> 爆发';
+    $('hintBar').innerHTML = '<b>单指拖动</b> 360° 旋转 &nbsp;·&nbsp; <b>双指捏合</b> 缩放 &nbsp;·&nbsp; <b>双击</b> 爆发';
     $('modeName').textContent = '触摸';
     $('shapeCount').textContent = '';
   }
@@ -901,8 +907,8 @@
     $('gestureBtn').textContent = '开启摄像头手势';
     $('gestureStatus').classList.remove('err');
     $('gestureStatus').textContent = '手势已关闭：单指左右拖动绕中心轴旋转、双指捏合缩放即可。';
-    state.gestureSpread = -1;
-    gestureHandPresent = false; gestureRotY = null;
+    state.grabOpen = -1;
+    gestureHandPresent = false; gestureRotY = null; gesturePrevSx = null;
     setMode(homeMode());
   }
   // turn the browser's camera error into a specific, actionable message
@@ -961,7 +967,7 @@
   // fallback when the camera works but the hand-tracking library can't load:
   // frame-difference motion sensing, no network needed — move / open your
   // hand in front of the camera to spread the particles, hold still to gather
-  var motionCanvas = null, motionCtx = null, prevFrame = null, motionVal = 0;
+  var motionCanvas = null, motionCtx = null, prevFrame = null, motionVal = 0, motionPrevSx = null;
   function startMotionFallback() {
     var video = $('camPreview');
     if (!motionCanvas) {
@@ -969,8 +975,8 @@
       motionCanvas.width = 64; motionCanvas.height = 48;
       motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
     }
-    prevFrame = null; motionVal = 0;
-    $('gestureStatus').textContent = '摄像头已打开。手势识别库没加载成功（多半是网络问题），已自动切换到动作感应：把手移到镜头左 / 右侧，整个造型就绕中心竖轴向左 / 向右转，手停住造型就停住。';
+    prevFrame = null; motionVal = 0; motionPrevSx = null;
+    $('gestureStatus').textContent = '摄像头已打开。手势识别库没加载成功（多半是网络问题），已自动切换到动作感应：把手往左 / 右移动，整个造型就绕中心竖轴连续转动，可以转满 360° 一直转圈，手停住造型就停住。';
     setMode('动作感应');
     (function loop() {
       if (!gestureOn) return;
@@ -990,14 +996,22 @@
           var avg = sum / n / 255;
           motionVal += (Math.min(1, avg * 7) - motionVal) * 0.1;
           if (sum > 0 && avg > 0.004) {
-            var target = handYawTarget((sumX / sum) / 63);
-            gestureRotY = (gestureRotY === null) ? target : gestureRotY + (target - gestureRotY) * 0.3;
+            // centroid of the frame difference = where the hand is; its
+            // horizontal MOVEMENT accumulates into the same unbounded
+            // 360° yaw as real hand tracking (mirrored screen space)
+            var msx = 1 - (sumX / sum) / 63;
+            if (gestureRotY === null) gestureRotY = rotYT;
+            if (motionPrevSx !== null) {
+              var mdsx = Math.max(-0.08, Math.min(0.08, msx - motionPrevSx));
+              if (Math.abs(mdsx) > 0.0015) gestureRotY += mdsx * 9;
+            }
+            motionPrevSx = msx;
             gestureHandPresent = true;
             manualHold = true;
           } else {
             gestureHandPresent = false;
+            motionPrevSx = null;
           }
-          state.gestureSpread = -1;
         }
         prevFrame = d;
       } catch (e) {}
@@ -1007,7 +1021,7 @@
     handsObj = new Hands({ locateFile: function (f) { return base + f; } });
     handsObj.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
     handsObj.onResults(onHandResults);
-    $('gestureStatus').textContent = '手势已开启：手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型就停在那个角度，不会自己转回去。手掌张开多快粒子就多快扩散，合拢抓握就同步收拢，1:1 跟手。';
+    $('gestureStatus').textContent = '手势已开启：手往左移，整个造型绕中心竖轴向左连续转，往右移就向右转，可以转满 360° 一直转圈；手停住，造型就停在那个角度，不会自己转回去。攥拳抓取，整个图案收紧缩小；摊开手掌，整个图案放大张开，缩放跟手掌张合的速度一致，1:1 跟手。';
     setMode('手势');
     var video = $('camPreview');
     var busy = false;
@@ -1062,19 +1076,15 @@
       });
   }
   function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
-  // hand position -> rigid yaw. The landmarks come from the raw camera
+  // continuous 360° gesture yaw: the landmarks come from the raw camera
   // frame; the preview is mirrored (scaleX(-1)), so the hand's on-screen
-  // x is 1 - landmark x. Screen-left maps to a left turn (negative yaw,
-  // the shape's front swings left), screen-right to a right turn, centre
-  // to straight-on. The mapping is absolute — hand position IS the angle —
-  // so a hand held still holds the shape at that angle, and the hand
-  // leaving the frame leaves the last angle untouched.
-  function handYawTarget(rawCx) {
-    var sx = 1 - rawCx;
-    var norm = (sx - 0.5) / 0.34;
-    norm = Math.max(-1, Math.min(1, norm));
-    return norm * 1.05; // up to ~60° each way around the central axis
-  }
+  // x is 1 - landmark x. Each frame, the hand's horizontal movement in
+  // screen space is accumulated into gestureRotY with no clamp and no
+  // wrap — move the hand left and the shape keeps turning left, right
+  // and it keeps turning right, through full circles and beyond. A hand
+  // held still adds nothing, so the shape parks at its current angle;
+  // a hand leaving the frame keeps the last angle, and re-entry
+  // re-anchors without a jump (gesturePrevSx resets while unseen).
   // hand openness 0..1 from landmarks: average fingertip-to-wrist distance
   // normalised by palm size (wrist -> middle knuckle), so it works at any
   // distance from the camera. A fist scores ~1.0-1.2, a fully open palm
@@ -1090,7 +1100,7 @@
   }
   function onHandResults(res) {
     var all = res.multiHandLandmarks || [];
-    if (!all.length) { gestureHandPresent = false; return; }
+    if (!all.length) { gestureHandPresent = false; gesturePrevSx = null; return; }
     // palm centre of every visible hand (wrist + middle knuckle), averaged
     var cx = 0, n = 0, openSum = 0, openN = 0;
     for (var h = 0; h < all.length; h++) {
@@ -1099,21 +1109,26 @@
       if (op >= 0) { openSum += op; openN++; }
     }
     cx /= n;
-    var target = handYawTarget(cx);
-    // smooth at the tracking rate; the render loop smooths once more, so
-    // the turn follows the hand without jitter or lag spikes
-    gestureRotY = (gestureRotY === null) ? target : gestureRotY + (target - gestureRotY) * 0.35;
+    // accumulate the hand's horizontal movement into the yaw: unbounded,
+    // so repeated sweeps turn the shape through full 360° circles
+    var sx = 1 - cx; // mirrored screen space
+    if (gestureRotY === null) gestureRotY = rotYT;
+    if (gesturePrevSx !== null) {
+      var dsx = Math.max(-0.08, Math.min(0.08, sx - gesturePrevSx));
+      if (Math.abs(dsx) > 0.0012) gestureRotY += dsx * 9;
+    }
+    gesturePrevSx = sx;
     gestureHandPresent = true;
     manualHold = true;
-    // spread follows the palm 1:1: the openness value is written almost
-    // raw (0.88 catch-up per tracking frame ≈ one frame of lag at most),
-    // so a fast open throws the particles open at the same speed and a
-    // fast grab pulls them back in just as fast — no slow smoothing
-    // stage is allowed to eat the hand's velocity
+    // grab scale follows the palm 1:1: the openness value is written
+    // almost raw (0.88 catch-up per tracking frame ≈ one frame of lag at
+    // most), so a fast grab pulls the whole shape in at the hand's own
+    // speed and a fast open throws it open just as fast — no slow
+    // smoothing stage is allowed to eat the hand's velocity
     if (openN > 0) {
       var open = openSum / openN;
-      state.gestureSpread = state.gestureSpread < 0 ? open
-        : state.gestureSpread + (open - state.gestureSpread) * 0.88;
+      state.grabOpen = state.grabOpen < 0 ? open
+        : state.grabOpen + (open - state.grabOpen) * 0.88;
     }
   }
   $('gestureBtn').addEventListener('click', startGesture);
@@ -1151,11 +1166,12 @@
       lastNow = now; elapsed += dt;
       var t = elapsed;
 
-      // spread: slider base, gesture overrides. Kept tightly around 1× —
-      // 0.97× gathered … 1.05× fully spread — so diffusion is only a very
-      // slight loosening of the shape, never a blow-out. Hold and burst
-      // add only a few percent on top of that.
-      var base = state.gestureSpread >= 0 ? state.gestureSpread : state.spread;
+      // diffusion: slider base only, kept tightly around 1× — 0.97×
+      // gathered … 1.05× fully spread — a very slight loosening of the
+      // shape, never a blow-out. Hold and burst add only a few percent
+      // on top of that. (The hand's grab/open no longer lives here: it
+      // drives the separate whole-shape grab scale below.)
+      var base = state.spread;
       // press-and-hold (finger kept down without dragging) ramps diffusion up
       if (pressing && pressMoved < 14 && performance.now() - pressStart > 90) {
         holdLevel = Math.min(1, holdLevel + dt * 1.1);
@@ -1167,13 +1183,17 @@
       state.burst = Math.max(0, state.burst - dt * 0.7);
       var burstCurve = Math.sin(Math.min(1, state.burst) * Math.PI);
       target += burstCurve * 0.035;
-      // follow speed: while a hand is driving the spread, chase the target
-      // at 0.72 per frame — the spread reaches the palm's openness within
-      // ~3 frames, so opening and closing land at the hand's own speed
-      // (1:1, no half-beat lag). The gentle 0.032 ease is kept only for
-      // slider / hold / burst changes, where a soft ramp feels right.
-      var gestureDriving = state.gestureSpread >= 0 && typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent;
-      spreadCur += (target - spreadCur) * (gestureDriving ? 0.72 : 0.032);
+      spreadCur += (target - spreadCur) * 0.032;
+      // grab scale: the WHOLE shape scales as one body with the palm —
+      // fist (openness 0) pulls it in to 0.55×, fully open palm
+      // (openness 1) opens it out to 1.40×. While a hand is driving,
+      // the scale chases the palm at 0.72 per frame, reaching it within
+      // ~3 frames, so grabbing and opening land at the hand's own speed
+      // (1:1, no half-beat lag). With no hand it holds its last size;
+      // with gestures off it eases back to 1×.
+      var grabDriving = state.grabOpen >= 0 && typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent;
+      var grabTarget = state.grabOpen >= 0 ? 0.55 + state.grabOpen * 0.85 : 1;
+      grabScaleCur += (grabTarget - grabScaleCur) * (grabDriving ? 0.72 : 0.08);
       // constant breathing: the whole shape swells and settles by ~±1.6%
       // on a ~7s cycle, forever — the particles are never frozen, even
       // when the shape is parked at an angle with no hand in frame
@@ -1195,10 +1215,11 @@
         }
       }
 
-      // gesture rigid rotation: while a hand is in frame, its position is
-      // the target yaw — the whole group turns around the central vertical
-      // axis as one rigid body. No hand / hand held still = target stays,
-      // so the shape parks at that angle.
+      // gesture rigid rotation: while a hand is in frame, the yaw it has
+      // accumulated from the hand's movement is the target — the whole
+      // group turns around the central vertical axis as one rigid body,
+      // through full 360° circles without limit. No hand / hand held
+      // still = target stays, so the shape parks at that angle.
       if (typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent && gestureRotY !== null) {
         rotYT = gestureRotY;
         // ease any tilt back to upright so the turn is purely around the
@@ -1236,21 +1257,26 @@
       // no oscillation. (k=0.052 / damp=0.82 overshot by ~20% and rang;
       // k=0.022 / damp=0.72 settles with <0.1% overshoot.) A hard velocity
       // cap below guarantees nothing can ever be flung.
-      // while the hand drives the spread, the particles themselves switch
-      // to a stiff, fast track (k 0.16 / damp 0.60): they reach a moving
-      // target in a handful of frames instead of gliding after it, which
-      // is what makes the open/close read as 1:1 with the palm. Idle and
-      // mouse interaction keep the soft overdamped glide.
-      var springK = gestureDriving ? 0.16 : 0.022, damp = gestureDriving ? 0.60 : 0.72;
+      // while the hand drives the grab scale, the particles themselves
+      // switch to a stiff, fast track (k 0.16 / damp 0.60): they reach a
+      // moving target in a handful of frames instead of gliding after
+      // it, which is what makes the grab/open read as 1:1 with the palm.
+      // Idle and mouse interaction keep the soft overdamped glide.
+      var springK = grabDriving ? 0.16 : 0.022, damp = grabDriving ? 0.60 : 0.72;
       var repelR = 1.8, repelR2 = repelR * repelR;
       var fling = Math.min(0.0022, Math.hypot(pointerVel.x, pointerVel.y) * 0.0001);
-      var velCap = gestureDriving ? 0.09 : 0.032;
+      var velCap = grabDriving ? 0.09 : 0.032;
       pointerVel.x *= 0.7; pointerVel.y *= 0.7;
+      // every particle target is multiplied by the same combined scale
+      // (slider diffusion × breathing × grab scale), so the grab/open
+      // resizes the pattern as one whole body — the scatter term stays
+      // driven by the small diffusion only, never by the hand
+      var shapeScale = spreadEff * grabScaleCur;
       for (var i = 0; i < state.count; i++) {
         var o = i * 3;
-        var tx = tgt[o] * spreadEff + scat[o] * scatterAmt;
-        var ty = tgt[o + 1] * spreadEff + scat[o + 1] * scatterAmt;
-        var tz = tgt[o + 2] * spreadEff + scat[o + 2] * scatterAmt;
+        var tx = tgt[o] * shapeScale + scat[o] * scatterAmt;
+        var ty = tgt[o + 1] * shapeScale + scat[o + 1] * scatterAmt;
+        var tz = tgt[o + 2] * shapeScale + scat[o + 2] * scatterAmt;
         // always-on life, per particle and out of phase so the surface
         // visibly shimmers and flows every second: a wobble, a slow
         // radial breathing drift along each particle's own scatter
@@ -1295,7 +1321,7 @@
       renderer.render(scene, camera);
     } catch (e) { /* keep loop alive */ }
   }
-  var spreadCur = 1;
+  var spreadCur = 1, grabScaleCur = 1;
   animate();
 })();
 </script>
