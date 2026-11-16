@@ -29,8 +29,34 @@
   button,[role="button"],select,summary,input:not([type="checkbox"],[type="radio"]){min-height:2rem}
   button{font-family:inherit;cursor:pointer}
 
-  #stage{position:fixed;inset:0}
+  #stage{position:fixed;inset:0;touch-action:none}
   #stage canvas{display:block;width:100%;height:100%;touch-action:none}
+  body{overscroll-behavior:none}
+
+  /* ---------- panel header: close X + swipe handle ---------- */
+  .panel-head{position:relative;padding-right:46px;touch-action:none}
+  .panel-head-text h2{margin:0 0 2px}
+  .sheet-handle{display:none}
+  .panel-close{
+    position:absolute;top:-4px;right:-4px;width:38px;height:38px;min-height:38px;border-radius:50%;
+    border:1px solid var(--btn-line);background:rgba(148,184,220,.12);color:var(--text);
+    display:inline-flex;align-items:center;justify-content:center;padding:0;z-index:3;
+  }
+  .panel-close svg{width:16px;height:16px}
+  .panel-close:active{background:rgba(45,212,191,.25)}
+
+  /* ---------- floating reopen button (panel closed) ---------- */
+  .panel-fab{
+    position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
+    width:48px;height:48px;min-height:48px;border-radius:50%;padding:0;
+    background:rgba(8,12,20,.78);border:1px solid rgba(45,212,191,.45);color:var(--accent);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    display:none;align-items:center;justify-content:center;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);
+  }
+  .panel-fab.show{display:inline-flex}
+  .panel-fab svg{width:20px;height:20px}
+  .panel-fab:active{background:rgba(45,212,191,.22)}
 
   /* ---------- top-left status chip ---------- */
   .mode-chip{
@@ -76,9 +102,10 @@
     background:var(--panel);border:1px solid var(--panel-line);border-radius:20px;
     -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
     padding:20px 18px;overflow-y:auto;overscroll-behavior:contain;
-    transition:transform .32s ease,opacity .32s ease;
+    transition:transform .32s ease,opacity .32s ease,visibility 0s;
   }
-  .panel.hidden{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+  .panel.hidden{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none;visibility:hidden;transition:transform .32s ease,opacity .32s ease,visibility 0s .32s}
+  .panel.gone{display:none}
   .panel h2{margin:0 0 2px;font-size:17px;font-weight:650}
   .panel .sub{font-size:12px;color:var(--faint);margin-bottom:16px}
   .sec{margin-bottom:20px}
@@ -206,6 +233,10 @@
       max-height:44dvh;border-radius:18px;padding:14px 14px 16px;
     }
     .panel.hidden{transform:translateY(calc(100% + 24px))}
+    .sheet-handle{display:block;width:44px;height:5px;border-radius:3px;background:rgba(148,184,220,.38);margin:0 auto 12px}
+    .panel-head{padding-right:44px;cursor:grab}
+    .panel-close{top:-2px;right:-2px;width:40px;height:40px;min-height:40px;background:rgba(148,184,220,.16)}
+    .panel-fab{bottom:calc(56px + env(safe-area-inset-bottom));right:14px}
     .panel h2{font-size:15px}
     .panel .sub{margin-bottom:10px}
     .sec{margin-bottom:14px}
@@ -254,8 +285,16 @@
 <div class="hint" id="hintBar"><b>拖动</b> 旋转 &nbsp;·&nbsp; <b>滚轮 / 双指</b> 缩放 &nbsp;·&nbsp; <b>按住鼠标</b> 让粒子扩散 &nbsp;·&nbsp; <b>移动鼠标</b> 推开粒子</div>
 
 <aside class="panel" id="panel" aria-label="控制台">
-  <h2>控制台</h2>
-  <div class="sub">调整形状、颜色与运动，立即生效</div>
+  <div class="panel-head" id="panelHead">
+    <span class="sheet-handle" aria-hidden="true"></span>
+    <div class="panel-head-text">
+      <h2>控制台</h2>
+      <div class="sub">调整形状、颜色与运动，立即生效</div>
+    </div>
+    <button class="panel-close" id="panelClose" type="button" aria-label="关闭控制台">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
 
   <div class="sec">
     <div class="sec-label">形状 · Shape</div>
@@ -293,11 +332,11 @@
 
   <div class="sec">
     <div class="switch-row">
-      <div>自动旋转<span>松开拖动后缓慢自转</span></div>
+      <div>自动旋转<span>仅在没有手动定住角度时缓慢自转；拖动或手势转到某个角度后会停在那里</span></div>
       <label class="switch"><input type="checkbox" id="autoRotate" checked /></label>
     </div>
     <div class="switch-row">
-      <div>鼠标推力<span>指针靠近时推开附近粒子</span></div>
+      <div>鼠标推力<span>仅鼠标靠近时轻推粒子；手指拖动只旋转、不推开</span></div>
       <label class="switch"><input type="checkbox" id="repelToggle" checked /></label>
     </div>
     <button class="wide-btn" id="resetBtn" type="button">重置视角</button>
@@ -308,7 +347,7 @@
     <div class="sec-label">手势控制 · 可选</div>
     <button class="wide-btn primary" id="gestureBtn" type="button">开启摄像头手势</button>
     <video id="camPreview" autoplay playsinline muted></video>
-    <div class="gesture-status" id="gestureStatus">单手张开 / 握紧控制扩散，双手拉开距离同步缩放。影像只在本机识别，不上传；不开也完全不影响鼠标操作。</div>
+    <div class="gesture-status" id="gestureStatus">手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型就停在那个角度。手掌张开多快，粒子就多快扩散张开；合拢抓握多快，粒子就多快收拢，基本 1:1 跟手。影像只在本机识别，不上传；不开也完全不影响鼠标操作。</div>
   </div>
 
   <div class="deploy">
@@ -317,11 +356,15 @@
   </div>
 </aside>
 
-<div class="overlay" id="overlay">
+<button class="panel-fab" id="panelFab" type="button" aria-label="打开控制台">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.2" fill="var(--bg)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.2" fill="var(--bg)"/></svg>
+</button>
+
+<div class="overlay gone" id="overlay" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="kicker">Optional Camera</div>
     <h1 id="modalTitle">是否启用手势控制？</h1>
-    <p>用单手张开 / 收紧控制粒子扩散，双手距离也可调节。影像仅在本机识别，不会上传。也可稍后在控制台随时开启。</p>
+    <p>手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型停在那个角度。手掌张开的速度有多快，粒子扩散张开就有多快；合拢抓握，粒子同步收拢，基本 1:1 跟手不延迟。影像仅在本机识别，不会上传。也可稍后在控制台随时开启。</p>
     <div class="actions">
       <button type="button" class="go" id="modalGesture">启用手势</button>
       <button type="button" id="modalMouse">暂用鼠标</button>
@@ -402,7 +445,7 @@
     var needH = 5.6 / Math.tan(55 * Math.PI / 360);
     return Math.max(11.5, Math.min(26, Math.max(need, a < 0.8 ? needH : 0)));
   }
-  camera.position.set(0, 0.6, camDist);
+  camera.position.set(0, 0.3, camDist);
 
   var group = new THREE.Group();
   scene.add(group);
@@ -523,7 +566,13 @@
     geo = new THREE.BufferGeometry();
     if (!keepCurrent || !cur || cur.length !== state.count * 3) {
       cur = new Float32Array(state.count * 3);
-      for (var i = 0; i < state.count * 3; i++) cur[i] = gauss() * 6;
+      if (!points) {
+        // very first build: start already formed, so the shape is complete
+        // and recognisable on the first frame instead of a loose cloud
+        for (var i2 = 0; i2 < state.count * 3; i2++) cur[i2] = tgt[i2];
+      } else {
+        for (var i = 0; i < state.count * 3; i++) cur[i] = gauss() * 6;
+      }
     }
     vel = new Float32Array(state.count * 3);
     seed = new Float32Array(state.count);
@@ -551,7 +600,16 @@
 
   /* ============================== interaction ============================== */
   var dragging = false, px = 0, py = 0;
-  var rotX = 0.08, rotY = 0, rotXT = 0.08, rotYT = 0;
+  var rotX = 0, rotY = 0, rotXT = 0, rotYT = 0;
+  var velXT = 0, velYT = 0; // kept zeroed: no fling — release must hold the angle
+  // gesture rigid rotation: hand screen-x maps to a target yaw around the
+  // central vertical axis; null = no hand has set an angle yet
+  var gestureRotY = null, gestureHandPresent = false;
+  // true once the user has parked the shape at an angle by drag or gesture:
+  // auto-rotation stays off until they re-enable it or reset the view
+  var manualHold = false;
+  var activePtrs = {};      // pointerId -> {x, y, type}
+  var pinchD = 0;
   var pointerWorld = new THREE.Vector3(999, 999, 999);
   var pointerVel = { x: 0, y: 0 }; // screen-space pointer speed, feeds the fling force
   var pointerActive = false, pressing = false;
@@ -576,55 +634,87 @@
     }
   }
   var el = renderer.domElement;
+  function ptrCount() { return Object.keys(activePtrs).length; }
+  function zoomMax() { return Math.max(20, fitDist() * 1.2); }
   el.addEventListener('pointerdown', function (e) {
-    dragging = true; pressing = true; px = e.clientX; py = e.clientY; setPointer(e);
-    pressStart = performance.now(); pressMoved = 0;
-    pointerVel.x = 0; pointerVel.y = 0;
-    // double-tap / double-click: full burst, the touch equivalent of the burst button
-    var nowTap = performance.now();
-    if (nowTap - lastTap < 320) { triggerBurst(); lastTap = 0; } else { lastTap = nowTap; }
+    if (e.pointerType === 'touch') e.preventDefault();
+    activePtrs[e.pointerId] = { x: e.clientX, y: e.clientY, type: e.pointerType };
+    if (ptrCount() === 2) {
+      // second finger down: stop rotating, switch to pinch only
+      dragging = false; pressing = false; holdLevel = 0; pointerActive = false;
+      var ids = Object.keys(activePtrs), a2 = activePtrs[ids[0]], b2 = activePtrs[ids[1]];
+      pinchD = Math.hypot(a2.x - b2.x, a2.y - b2.y);
+    } else if (ptrCount() === 1) {
+      dragging = true;
+      // hold-to-spread and pointer repel are mouse/pen only: a touch drag
+      // must ONLY rotate, never push or scatter the particles
+      pressing = (e.pointerType === 'mouse' || e.pointerType === 'pen');
+      px = e.clientX; py = e.clientY;
+      pressStart = performance.now(); pressMoved = 0;
+      pointerVel.x = 0; pointerVel.y = 0; velXT = 0; velYT = 0;
+      if (pressing) setPointer(e); else pointerActive = false;
+      // double-tap / double-click: full burst, the touch equivalent of the burst button
+      var nowTap = performance.now();
+      if (nowTap - lastTap < 320) { triggerBurst(); lastTap = 0; } else { lastTap = nowTap; }
+    }
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
   });
   el.addEventListener('pointermove', function (e) {
+    var rec = activePtrs[e.pointerId];
+    if (rec) { rec.x = e.clientX; rec.y = e.clientY; }
+    if (ptrCount() === 2) {
+      var ids = Object.keys(activePtrs), a = activePtrs[ids[0]], b = activePtrs[ids[1]];
+      var d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchD > 0 && d > 0) { userZoom = true; camDistTarget = Math.max(7, Math.min(zoomMax(), camDistTarget - (d - pinchD) * 0.03)); }
+      pinchD = d;
+      return;
+    }
+    // mouse / pen hover feeds the gentle repel; touch never does
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') setPointer(e);
+    if (!dragging || ptrCount() !== 1) return;
     var dxm = e.clientX - px, dym = e.clientY - py;
-    pointerVel.x = pointerVel.x * 0.6 + dxm * 0.4;
-    pointerVel.y = pointerVel.y * 0.6 + dym * 0.4;
-    setPointer(e);
-    if (!dragging) return;
-    pressMoved += Math.abs(dxm) + Math.abs(dym);
-    rotYT += dxm * 0.0052;
-    rotXT += dym * 0.0038;
-    rotXT = Math.max(-1.1, Math.min(1.1, rotXT));
     px = e.clientX; py = e.clientY;
+    if (pressing) {
+      pointerVel.x = pointerVel.x * 0.6 + dxm * 0.4;
+      pointerVel.y = pointerVel.y * 0.6 + dym * 0.4;
+    }
+    pressMoved += Math.abs(dxm) + Math.abs(dym);
+    // horizontal drag = rigid yaw around the central vertical axis only:
+    // drag left turns the whole shape left, drag right turns it right.
+    // The whole group rotates — no particle is pushed or scattered.
+    var dRotY = dxm * 0.0072, dRotX = dym * 0.0042;
+    rotYT += dRotY;
+    rotXT = Math.max(-1.1, Math.min(1.1, rotXT + dRotX));
+    manualHold = true;
+    velYT = 0; velXT = 0;
   });
-  function endPointer() { dragging = false; pressing = false; holdLevel = 0; }
+  function endPointer(e) {
+    delete activePtrs[e.pointerId];
+    if (ptrCount() < 2) pinchD = 0;
+    if (ptrCount() === 1) {
+      // one finger remains after a pinch: re-anchor to it so the view
+      // does not jump, and resume single-finger rotation
+      var id = Object.keys(activePtrs)[0], p = activePtrs[id];
+      px = p.x; py = p.y; dragging = true; velXT = 0; velYT = 0;
+    } else if (ptrCount() === 0) {
+      // release: hold exactly the angle the drag left the shape at —
+      // no fling, no drift back, no auto-spin taking over
+      dragging = false; pressing = false; holdLevel = 0;
+      velXT = 0; velYT = 0;
+    }
+  }
   el.addEventListener('pointerup', endPointer);
   el.addEventListener('pointercancel', endPointer);
-  el.addEventListener('pointerleave', function () { pointerActive = false; pressing = false; });
+  el.addEventListener('pointerleave', function (e) {
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') { pointerActive = false; pressing = false; }
+  });
   el.addEventListener('wheel', function (e) {
     e.preventDefault();
     userZoom = true;
-    camDistTarget = Math.max(7, Math.min(20, camDistTarget + e.deltaY * 0.012));
+    camDistTarget = Math.max(7, Math.min(zoomMax(), camDistTarget + e.deltaY * 0.012));
   }, { passive: false });
-
-  // pinch zoom (two-finger touch) — standard pointer events, works in Safari
-  var pinchD = 0;
-  var activePtrs = {};
-  el.addEventListener('pointerdown', function (e) { activePtrs[e.pointerId] = { x: e.clientX, y: e.clientY }; });
-  el.addEventListener('pointermove', function (e) {
-    if (!activePtrs[e.pointerId]) return;
-    activePtrs[e.pointerId] = { x: e.clientX, y: e.clientY };
-    var ids = Object.keys(activePtrs);
-    if (ids.length === 2) {
-      var a = activePtrs[ids[0]], b = activePtrs[ids[1]];
-      var d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinchD > 0) { userZoom = true; camDistTarget = Math.max(7, Math.min(20, camDistTarget - (d - pinchD) * 0.03)); }
-      pinchD = d; dragging = false;
-    }
-  });
-  function dropPtr(e) { delete activePtrs[e.pointerId]; if (Object.keys(activePtrs).length < 2) pinchD = 0; }
-  el.addEventListener('pointerup', dropPtr);
-  el.addEventListener('pointercancel', dropPtr);
+  // pinch zoom (two-finger touch) is handled inside the unified pointer
+  // handlers above: two active pointers switch the drag to pinch-only
 
   /* ============================== UI build ============================== */
   var shapeIcons = {
@@ -693,10 +783,13 @@
     buildPoints(false);
   });
 
-  $('autoRotate').addEventListener('change', function () { state.autoRotate = this.checked; });
+  $('autoRotate').addEventListener('change', function () { state.autoRotate = this.checked; manualHold = false; });
   $('repelToggle').addEventListener('change', function () { state.repel = this.checked; });
   $('resetBtn').addEventListener('click', function () {
-    rotXT = 0.08; rotYT = 0; userZoom = false; camDistTarget = fitDist();
+    // one tap back to the straight-on, centred front view
+    rotXT = 0; rotYT = 0; rotX = 0; rotY = 0; velXT = 0; velYT = 0;
+    gestureRotY = null; gestureHandPresent = false; manualHold = false;
+    userZoom = false; camDistTarget = fitDist(); camDist = camDistTarget;
   });
   $('burstBtn').addEventListener('click', triggerBurst);
 
@@ -707,14 +800,62 @@
     if (n >= 1 && n <= SHAPES.length) setShape(SHAPES[n - 1].id);
   });
 
-  // touch devices get touch wording in the hint line
+  // touch devices get touch wording in the hint line, and the mode chip
+  // says 触摸 — touch is the default mode, camera gestures stay opt-in
   if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-    $('hintBar').innerHTML = '<b>拖动</b> 旋转 &nbsp;·&nbsp; <b>按住</b> 扩散 &nbsp;·&nbsp; <b>双击</b> 爆发 &nbsp;·&nbsp; <b>双指</b> 缩放';
+    $('hintBar').innerHTML = '<b>单指拖动</b> 旋转 &nbsp;·&nbsp; <b>双指捏合</b> 缩放 &nbsp;·&nbsp; <b>双击</b> 爆发';
+    $('modeName').textContent = '触摸';
     $('shapeCount').textContent = '';
   }
 
-  $('panelBtn').addEventListener('click', function () { $('panel').classList.toggle('hidden'); });
-  if (window.innerWidth <= 760) $('panel').classList.add('hidden');
+  // panel open/close: X button, toolbar button, floating reopen button,
+  // and swipe-down on the drawer header (mobile bottom sheet)
+  var panelEl = $('panel'), fabEl = $('panelFab'), panelGoneTimer = 0;
+  function setPanel(open, instant) {
+    fabEl.classList.toggle('show', !open);
+    if (panelGoneTimer) { clearTimeout(panelGoneTimer); panelGoneTimer = 0; }
+    if (open) {
+      panelEl.classList.remove('gone');
+      // two frames so the slide-in transition runs from the hidden state
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { panelEl.classList.remove('hidden'); });
+      });
+    } else if (instant) {
+      panelEl.classList.add('hidden');
+      panelEl.classList.add('gone');
+    } else {
+      panelEl.classList.add('hidden');
+      // after the slide-out, leave the layout entirely (display:none) so
+      // the closed drawer's controls are truly out of the page
+      panelGoneTimer = setTimeout(function () {
+        if (panelEl.classList.contains('hidden')) panelEl.classList.add('gone');
+      }, 340);
+    }
+  }
+  $('panelBtn').addEventListener('click', function () { setPanel(panelEl.classList.contains('hidden')); });
+  $('panelClose').addEventListener('click', function () { setPanel(false); });
+  fabEl.addEventListener('click', function () { setPanel(true); });
+  var headSwipe = null;
+  $('panelHead').addEventListener('pointerdown', function (e) {
+    headSwipe = { id: e.pointerId, y: e.clientY, x: e.clientX, dy: 0, dx: 0 };
+  });
+  $('panelHead').addEventListener('pointermove', function (e) {
+    if (headSwipe && e.pointerId === headSwipe.id) {
+      headSwipe.dy = e.clientY - headSwipe.y;
+      headSwipe.dx = e.clientX - headSwipe.x;
+    }
+  });
+  function headSwipeEnd(e) {
+    if (!headSwipe || e.pointerId !== headSwipe.id) return;
+    var dy = headSwipe.dy, dx = headSwipe.dx;
+    headSwipe = null;
+    if (dy > 48 && Math.abs(dy) > Math.abs(dx)) setPanel(false);
+  }
+  $('panelHead').addEventListener('pointerup', headSwipeEnd);
+  $('panelHead').addEventListener('pointercancel', headSwipeEnd);
+  // phones start with the drawer closed: the shape is fully visible and
+  // only the small floating button remains to reopen the controls
+  if (window.innerWidth > 760) { setPanel(true); } else { setPanel(false, true); }
 
   $('fsBtn').addEventListener('click', function () {
     var d = document;
@@ -730,6 +871,9 @@
   /* ============================== gesture (optional) ============================== */
   var gestureOn = false, gestureBusy = false, mediaStream = null, handsObj = null, camLoop = null;
   function setMode(name) { $('modeName').textContent = name; }
+  function homeMode() {
+    return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ? '触摸' : '鼠标';
+  }
   function stopTracks() {
     if (mediaStream) { mediaStream.getTracks().forEach(function (t) { t.stop(); }); mediaStream = null; }
   }
@@ -739,7 +883,7 @@
     s.classList.add('err');
     $('gestureBtn').textContent = '开启摄像头手势';
     gestureOn = false; gestureBusy = false;
-    setMode('鼠标');
+    setMode(homeMode());
   }
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
@@ -756,9 +900,10 @@
     $('camPreview').style.display = 'none';
     $('gestureBtn').textContent = '开启摄像头手势';
     $('gestureStatus').classList.remove('err');
-    $('gestureStatus').textContent = '手势已关闭，继续用鼠标即可：拖动旋转、按住扩散。';
+    $('gestureStatus').textContent = '手势已关闭：单指左右拖动绕中心轴旋转、双指捏合缩放即可。';
     state.gestureSpread = -1;
-    setMode('鼠标');
+    gestureHandPresent = false; gestureRotY = null;
+    setMode(homeMode());
   }
   // turn the browser's camera error into a specific, actionable message
   function camErrorMessage(err) {
@@ -825,7 +970,7 @@
       motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
     }
     prevFrame = null; motionVal = 0;
-    $('gestureStatus').textContent = '摄像头已打开。手势识别库没加载成功（多半是网络问题），已自动切换到动作感应：在镜头前挥动或张开手掌让粒子扩散，手静止时粒子收拢。';
+    $('gestureStatus').textContent = '摄像头已打开。手势识别库没加载成功（多半是网络问题），已自动切换到动作感应：把手移到镜头左 / 右侧，整个造型就绕中心竖轴向左 / 向右转，手停住造型就停住。';
     setMode('动作感应');
     (function loop() {
       if (!gestureOn) return;
@@ -835,11 +980,24 @@
         motionCtx.drawImage(video, 0, 0, 64, 48);
         var d = motionCtx.getImageData(0, 0, 64, 48).data;
         if (prevFrame) {
-          var sum = 0, n = 64 * 48;
-          for (var i = 0; i < n; i++) sum += Math.abs(d[i * 4] - prevFrame[i * 4]);
+          // centroid of the frame difference = where the hand is moving;
+          // its x position drives the same rigid yaw as real hand tracking
+          var sum = 0, sumX = 0, n = 64 * 48;
+          for (var i = 0; i < n; i++) {
+            var diff = Math.abs(d[i * 4] - prevFrame[i * 4]);
+            sum += diff; sumX += diff * (i % 64);
+          }
           var avg = sum / n / 255;
           motionVal += (Math.min(1, avg * 7) - motionVal) * 0.1;
-          state.gestureSpread = Math.min(1, Math.max(0, motionVal));
+          if (sum > 0 && avg > 0.004) {
+            var target = handYawTarget((sumX / sum) / 63);
+            gestureRotY = (gestureRotY === null) ? target : gestureRotY + (target - gestureRotY) * 0.3;
+            gestureHandPresent = true;
+            manualHold = true;
+          } else {
+            gestureHandPresent = false;
+          }
+          state.gestureSpread = -1;
         }
         prevFrame = d;
       } catch (e) {}
@@ -849,7 +1007,7 @@
     handsObj = new Hands({ locateFile: function (f) { return base + f; } });
     handsObj.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
     handsObj.onResults(onHandResults);
-    $('gestureStatus').textContent = '手势已开启：单手张开扩散、握紧收拢；双手同时出现时，拉开 / 靠近双手同步扩散。';
+    $('gestureStatus').textContent = '手势已开启：手往左移，整个造型绕中心竖轴向左转；手往右移就向右转；手停住，造型就停在那个角度，不会自己转回去。手掌张开多快粒子就多快扩散，合拢抓握就同步收拢，1:1 跟手。';
     setMode('手势');
     var video = $('camPreview');
     var busy = false;
@@ -871,7 +1029,6 @@
       return;
     }
     gestureBusy = true;
-    $('panel').classList.remove('hidden');
     $('gestureBtn').textContent = '正在开启…';
     $('gestureStatus').classList.remove('err');
     $('gestureStatus').textContent = '正在请求摄像头权限，请在浏览器弹出的提示里点「允许」…';
@@ -905,21 +1062,59 @@
       });
   }
   function dist(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+  // hand position -> rigid yaw. The landmarks come from the raw camera
+  // frame; the preview is mirrored (scaleX(-1)), so the hand's on-screen
+  // x is 1 - landmark x. Screen-left maps to a left turn (negative yaw,
+  // the shape's front swings left), screen-right to a right turn, centre
+  // to straight-on. The mapping is absolute — hand position IS the angle —
+  // so a hand held still holds the shape at that angle, and the hand
+  // leaving the frame leaves the last angle untouched.
+  function handYawTarget(rawCx) {
+    var sx = 1 - rawCx;
+    var norm = (sx - 0.5) / 0.34;
+    norm = Math.max(-1, Math.min(1, norm));
+    return norm * 1.05; // up to ~60° each way around the central axis
+  }
+  // hand openness 0..1 from landmarks: average fingertip-to-wrist distance
+  // normalised by palm size (wrist -> middle knuckle), so it works at any
+  // distance from the camera. A fist scores ~1.0-1.2, a fully open palm
+  // ~1.9-2.2; the range between is mapped linearly onto 0..1.
+  function handOpenness(lm) {
+    var palm = dist(lm[0], lm[9]);
+    if (!palm || palm < 0.001) return -1;
+    var tips = [4, 8, 12, 16, 20], sum = 0;
+    for (var i = 0; i < tips.length; i++) sum += dist(lm[0], lm[tips[i]]);
+    var ratio = (sum / tips.length) / palm;
+    var o = (ratio - 1.08) / (2.02 - 1.08);
+    return Math.max(0, Math.min(1, o));
+  }
   function onHandResults(res) {
     var all = res.multiHandLandmarks || [];
-    if (!all.length) { state.gestureSpread = -1; return; }
-    if (all.length >= 2) {
-      var d = dist(all[0][0], all[1][0]);
-      state.gestureSpread = Math.min(1, Math.max(0, (d - 0.18) / 0.55));
-      return;
+    if (!all.length) { gestureHandPresent = false; return; }
+    // palm centre of every visible hand (wrist + middle knuckle), averaged
+    var cx = 0, n = 0, openSum = 0, openN = 0;
+    for (var h = 0; h < all.length; h++) {
+      cx += all[h][0].x + all[h][9].x; n += 2;
+      var op = handOpenness(all[h]);
+      if (op >= 0) { openSum += op; openN++; }
     }
-    var lm = all[0];
-    var palm = dist(lm[0], lm[9]) || 0.001;
-    var tips = [8, 12, 16, 20];
-    var sum = 0;
-    for (var i = 0; i < tips.length; i++) sum += dist(lm[tips[i]], lm[0]);
-    var open = (sum / tips.length) / palm; // ~1.1 fist → ~2.2 open
-    state.gestureSpread = Math.min(1, Math.max(0, (open - 1.15) / 1.0));
+    cx /= n;
+    var target = handYawTarget(cx);
+    // smooth at the tracking rate; the render loop smooths once more, so
+    // the turn follows the hand without jitter or lag spikes
+    gestureRotY = (gestureRotY === null) ? target : gestureRotY + (target - gestureRotY) * 0.35;
+    gestureHandPresent = true;
+    manualHold = true;
+    // spread follows the palm 1:1: the openness value is written almost
+    // raw (0.88 catch-up per tracking frame ≈ one frame of lag at most),
+    // so a fast open throws the particles open at the same speed and a
+    // fast grab pulls them back in just as fast — no slow smoothing
+    // stage is allowed to eat the hand's velocity
+    if (openN > 0) {
+      var open = openSum / openN;
+      state.gestureSpread = state.gestureSpread < 0 ? open
+        : state.gestureSpread + (open - state.gestureSpread) * 0.88;
+    }
   }
   $('gestureBtn').addEventListener('click', startGesture);
 
@@ -972,8 +1167,19 @@
       state.burst = Math.max(0, state.burst - dt * 0.7);
       var burstCurve = Math.sin(Math.min(1, state.burst) * Math.PI);
       target += burstCurve * 0.035;
-      spreadCur += (target - spreadCur) * 0.032;
-      var scatterAmt = Math.max(0, spreadCur - 1) * 0.85 + burstCurve * 0.045;
+      // follow speed: while a hand is driving the spread, chase the target
+      // at 0.72 per frame — the spread reaches the palm's openness within
+      // ~3 frames, so opening and closing land at the hand's own speed
+      // (1:1, no half-beat lag). The gentle 0.032 ease is kept only for
+      // slider / hold / burst changes, where a soft ramp feels right.
+      var gestureDriving = state.gestureSpread >= 0 && typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent;
+      spreadCur += (target - spreadCur) * (gestureDriving ? 0.72 : 0.032);
+      // constant breathing: the whole shape swells and settles by ~±1.6%
+      // on a ~7s cycle, forever — the particles are never frozen, even
+      // when the shape is parked at an angle with no hand in frame
+      var breath = 1 + Math.sin(t * 0.9) * 0.016;
+      var spreadEff = spreadCur * breath;
+      var scatterAmt = Math.max(0, spreadEff - 1) * 0.85 + burstCurve * 0.045;
       // one-shot burst nudge: a tiny outward velocity only — just enough
       // to be felt, far too small to throw particles off the shape
       if (pendingImpulse && vel) {
@@ -989,15 +1195,38 @@
         }
       }
 
-      if (state.autoRotate && !dragging) rotYT += dt * 0.12 * state.speedMul * (reducedMotion ? 0.4 : 1);
-      rotY += (rotYT - rotY) * 0.08;
-      rotX += (rotXT - rotX) * 0.08;
+      // gesture rigid rotation: while a hand is in frame, its position is
+      // the target yaw — the whole group turns around the central vertical
+      // axis as one rigid body. No hand / hand held still = target stays,
+      // so the shape parks at that angle.
+      if (typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent && gestureRotY !== null) {
+        rotYT = gestureRotY;
+        // ease any tilt back to upright so the turn is purely around the
+        // central vertical axis, never a wobble
+        rotXT += (0 - rotXT) * 0.08;
+      }
+      if (!dragging) {
+        // no fling and no take-over: once a drag or a gesture has parked
+        // the shape at an angle (manualHold), nothing moves it again —
+        // auto-rotation only runs when no angle has been parked and
+        // gesture mode is off
+        velYT = 0; velXT = 0;
+        if (state.autoRotate && !manualHold && !(typeof gestureOn !== 'undefined' && gestureOn)) {
+          rotYT += dt * 0.12 * state.speedMul * (reducedMotion ? 0.4 : 1);
+        }
+      }
+      // tight, smooth follow: faster while a hand or finger is actively
+      // driving the angle (跟手), gentler settle otherwise
+      var driving = dragging || (typeof gestureOn !== 'undefined' && gestureOn && gestureHandPresent);
+      var followF = driving ? 0.45 : 0.25;
+      rotY += (rotYT - rotY) * followF;
+      rotX += (rotXT - rotX) * followF;
       group.rotation.y = rotY;
       group.rotation.x = rotX;
 
       camDist += (camDistTarget - camDist) * 0.08;
-      camera.position.set(0, 0.6, camDist);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 0.3, camDist);
+      camera.lookAt(0, 0.3, 0);
 
       var pos = geo.getAttribute('position');
       var arr = pos.array;
@@ -1007,18 +1236,31 @@
       // no oscillation. (k=0.052 / damp=0.82 overshot by ~20% and rang;
       // k=0.022 / damp=0.72 settles with <0.1% overshoot.) A hard velocity
       // cap below guarantees nothing can ever be flung.
-      var springK = 0.022, damp = 0.72;
+      // while the hand drives the spread, the particles themselves switch
+      // to a stiff, fast track (k 0.16 / damp 0.60): they reach a moving
+      // target in a handful of frames instead of gliding after it, which
+      // is what makes the open/close read as 1:1 with the palm. Idle and
+      // mouse interaction keep the soft overdamped glide.
+      var springK = gestureDriving ? 0.16 : 0.022, damp = gestureDriving ? 0.60 : 0.72;
       var repelR = 1.8, repelR2 = repelR * repelR;
       var fling = Math.min(0.0022, Math.hypot(pointerVel.x, pointerVel.y) * 0.0001);
-      var velCap = 0.032;
+      var velCap = gestureDriving ? 0.09 : 0.032;
       pointerVel.x *= 0.7; pointerVel.y *= 0.7;
       for (var i = 0; i < state.count; i++) {
         var o = i * 3;
-        var tx = tgt[o] * spreadCur + scat[o] * scatterAmt;
-        var ty = tgt[o + 1] * spreadCur + scat[o + 1] * scatterAmt;
-        var tz = tgt[o + 2] * spreadCur + scat[o + 2] * scatterAmt;
+        var tx = tgt[o] * spreadEff + scat[o] * scatterAmt;
+        var ty = tgt[o + 1] * spreadEff + scat[o + 1] * scatterAmt;
+        var tz = tgt[o + 2] * spreadEff + scat[o + 2] * scatterAmt;
+        // always-on life, per particle and out of phase so the surface
+        // visibly shimmers and flows every second: a wobble, a slow
+        // radial breathing drift along each particle's own scatter
+        // direction, and a gentle circular current around the centre
         var wob = Math.sin(t * 1.4 + seed[i]) * 0.045;
         tx += wob; ty += Math.cos(t * 1.1 + seed[i] * 1.7) * 0.045;
+        var flow = Math.sin(t * 0.85 + seed[i] * 2.3) * 0.055;
+        tx += scat[o] * flow; ty += scat[o + 1] * flow; tz += scat[o + 2] * flow;
+        var circ = t * 0.8 + seed[i] * 1.3;
+        tx += Math.cos(circ) * 0.032; tz += Math.sin(circ) * 0.032;
         var vx = vel[o], vy = vel[o + 1], vz = vel[o + 2];
         vx += (tx - arr[o]) * springK;
         vy += (ty - arr[o + 1]) * springK;
@@ -1044,6 +1286,12 @@
         arr[o] += vel[o]; arr[o + 1] += vel[o + 1]; arr[o + 2] += vel[o + 2];
       }
       pos.needsUpdate = true;
+      // twinkle: brightness and point size breathe on their own phases,
+      // so even a perfectly still viewpoint sparkles instead of freezing
+      if (mat) {
+        mat.opacity = 0.87 + 0.08 * (0.5 + 0.5 * Math.sin(t * 2.3));
+        mat.size = 0.085 * state.sizeMul * (1 + 0.07 * Math.sin(t * 1.7 + 1.3));
+      }
       renderer.render(scene, camera);
     } catch (e) { /* keep loop alive */ }
   }
